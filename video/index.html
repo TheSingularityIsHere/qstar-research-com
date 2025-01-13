@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <style>
+    body,
+    html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #videoContainer {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: black;
+      position: relative;
+    }
+
+    #mainVideo {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+    }
+
+    #initialButton {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 20px 40px;
+      font-size: 18px;
+      cursor: pointer;
+      background: white;
+      border: none;
+      border-radius: 5px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="videoContainer">
+    <video id="mainVideo">
+      <source src="video.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+    <button id="initialButton">Click to Initialize</button>
+  </div>
+
+  <script>
+    const video = document.getElementById('mainVideo');
+    const videoContainer = document.getElementById('videoContainer');
+    const initialButton = document.getElementById('initialButton');
+
+    let pausePoints = [];
+    let nextPauseIndex = 0;
+    let statusWindow = null;
+    let isInitialized = false;
+    let currentDescription = '';
+
+    // Initial setup
+    video.pause();
+
+    async function loadPausePoints() {
+      try {
+        const response = await fetch('video.json');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        pausePoints = await response.json();
+        pausePoints.sort((a, b) => a.timestamp - b.timestamp);  // Ensure timestamps are in order
+      } catch (error) {
+        console.error('Error loading pause points:', error);
+        pausePoints = [];  // Use empty array if loading fails
+      }
+    }
+
+    function toggleFullScreen() {
+      if (!document.fullscreenElement) {
+        videoContainer.requestFullscreen().catch(err => {
+          console.log(`Error attempting to enable fullscreen: ${err.message}`);
+        });
+      }
+    }
+
+    function openStatusWindow() {
+      const width = 400;  // Made wider to accommodate descriptions
+      const height = 250;
+      const left = window.screen.width - width;
+      const top = 0;
+
+      statusWindow = window.open('', 'videoStatus',
+        `width=${width},height=${height},left=${left},top=${top}`);
+
+      const statusWindowContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            padding: 20px;
+                            background: #f0f0f0;
+                        }
+                        #playButton {
+                            padding: 10px 20px;
+                            font-size: 16px;
+                            margin-top: 20px;
+                            cursor: pointer;
+                        }
+                        .status-label {
+                            font-weight: bold;
+                            margin-bottom: 10px;
+                        }
+                        #description {
+                            margin-top: 20px;
+                            padding: 10px;
+                            background: white;
+                            border-radius: 5px;
+                            min-height: 50px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="status-label">Status: <span id="playStatus">Paused</span></div>
+                    <div class="status-label">Time: <span id="timeStatus">0.00</span> seconds</div>
+                    <div id="description"></div>
+                    <button id="playButton">Play</button>
+                    <script>
+                        const playButton = document.getElementById('playButton');
+                        playButton.addEventListener('click', () => {
+                            window.opener.resumePlayback();
+                        });
+                    <\/script>
+                </body>
+                </html>
+            `;
+      statusWindow.document.write(statusWindowContent);
+      updateStatus();
+    }
+
+    function updateStatus() {
+      if (statusWindow && !statusWindow.closed) {
+        const playStatus = statusWindow.document.getElementById('playStatus');
+        const timeStatus = statusWindow.document.getElementById('timeStatus');
+        const descriptionElement = statusWindow.document.getElementById('description');
+
+        if (playStatus && timeStatus && descriptionElement) {
+          playStatus.textContent = video.paused ? 'Paused' : 'Playing';
+          timeStatus.textContent = video.currentTime.toFixed(2);
+          descriptionElement.textContent = currentDescription || '';
+        }
+      }
+    }
+
+    async function resumePlayback() {
+      if (video.paused && isInitialized) {
+        try {
+          await video.play();
+          toggleFullScreen();
+        } catch (error) {
+          console.error('Error playing video:', error);
+        }
+      }
+    }
+
+    async function initializePlayer() {
+      await loadPausePoints();
+      isInitialized = true;
+      initialButton.style.display = 'none';
+      openStatusWindow();
+    }
+
+    video.addEventListener('timeupdate', () => {
+      updateStatus();
+
+      if (nextPauseIndex < pausePoints.length &&
+        video.currentTime >= pausePoints[nextPauseIndex].timestamp) {
+        video.pause();
+        currentDescription = pausePoints[nextPauseIndex].description;
+        nextPauseIndex++;
+        updateStatus();
+      }
+    });
+
+    video.addEventListener('pause', updateStatus);
+    video.addEventListener('play', updateStatus);
+
+    window.addEventListener('keydown', (event) => {
+      if (event.code === 'Space') {
+        event.preventDefault();
+      }
+    });
+
+    initialButton.addEventListener('click', initializePlayer);
+  </script>
+</body>
+
+</html>
