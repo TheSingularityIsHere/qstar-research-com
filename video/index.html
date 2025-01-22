@@ -12,6 +12,11 @@
       overflow: hidden;
     }
 
+    @font-face {
+      font-family: "San Francisco";
+      src: local("-apple-system"), local("BlinkMacSystemFont");
+    }
+
     #videoContainer {
       width: 100%;
       height: 100%;
@@ -27,6 +32,25 @@
       max-height: 100%;
       width: auto;
       height: auto;
+    }
+
+    .video-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    #timeOverlay {
+      position: absolute;
+      background-color: #000;
+      font-family: "San Francisco", -apple-system, BlinkMacSystemFont, sans-serif;
+      border-radius: 4px;
+      z-index: 1001;
+      right: 0;
+      top: 0;
+      font-size: 0.8vw;
+      padding: 0.6vw 6.6vw 0vw 0.5vw;
+      color: rgb(190, 190, 190);
+      font-weight: 600;
     }
 
     #initialButton {
@@ -47,10 +71,13 @@
 
 <body>
   <div id="videoContainer">
-    <video id="mainVideo">
-      <source src="video.mp4" type="video/mp4">
-      Your browser does not support the video tag.
-    </video>
+    <div class="video-wrapper">
+      <video id="mainVideo">
+        <source src="video.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+      <div id="timeOverlay"></div>
+    </div>
     <button id="initialButton">Click to Initialize</button>
   </div>
 
@@ -58,6 +85,7 @@
     const video = document.getElementById('mainVideo');
     const videoContainer = document.getElementById('videoContainer');
     const initialButton = document.getElementById('initialButton');
+    const timeOverlay = document.getElementById('timeOverlay');
 
     let pausePoints = [];
     let nextPauseIndex = 0;
@@ -68,6 +96,58 @@
     // Initial setup
     video.pause();
 
+    function updateTimeOverlay() {
+      const now = new Date();
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+      const dayName = days[now.getDay()];
+      const date = now.getDate();
+      const monthName = months[now.getMonth()];
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+
+      timeOverlay.textContent = `${dayName} ${date} ${monthName} ${hours}:${minutes}`;
+    }
+
+    function updateOverlayPosition() {
+      const videoRect = video.getBoundingClientRect();
+      const videoAspectRatio = video.videoWidth / video.videoHeight;
+      const containerAspectRatio = videoContainer.clientWidth / videoContainer.clientHeight;
+
+      // Calculate the actual displayed video dimensions
+      let videoDisplayWidth, videoDisplayHeight;
+      if (containerAspectRatio > videoAspectRatio) {
+        // Height constrained
+        videoDisplayHeight = videoRect.height;
+        videoDisplayWidth = videoDisplayHeight * videoAspectRatio;
+      } else {
+        // Width constrained
+        videoDisplayWidth = videoRect.width;
+        videoDisplayHeight = videoDisplayWidth / videoAspectRatio;
+      }
+
+      // Get the overlay dimensions
+      const overlayRect = timeOverlay.getBoundingClientRect();
+
+    }
+
+    // Update time immediately and then every minute
+    updateTimeOverlay();
+    setInterval(updateTimeOverlay, 60000);
+
+    // Add resize observer to update overlay position when container size changes
+    const resizeObserver = new ResizeObserver(() => {
+      updateOverlayPosition();
+    });
+    resizeObserver.observe(videoContainer);
+
+    // Update overlay position when video metadata is loaded
+    video.addEventListener('loadedmetadata', updateOverlayPosition);
+
+    // Update overlay position when entering/exiting fullscreen
+    document.addEventListener('fullscreenchange', updateOverlayPosition);
+
     async function loadPausePoints() {
       try {
         const response = await fetch('video.json');
@@ -75,10 +155,10 @@
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         pausePoints = await response.json();
-        pausePoints.sort((a, b) => a.timestamp - b.timestamp);  // Ensure timestamps are in order
+        pausePoints.sort((a, b) => a.timestamp - b.timestamp);
       } catch (error) {
         console.error('Error loading pause points:', error);
-        pausePoints = [];  // Use empty array if loading fails
+        pausePoints = [];
       }
     }
 
@@ -91,7 +171,7 @@
     }
 
     function openStatusWindow() {
-      const width = 400;  // Made wider to accommodate descriptions
+      const width = 400;
       const height = 250;
       const left = window.screen.width - width;
       const top = 0;
